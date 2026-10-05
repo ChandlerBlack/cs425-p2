@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "harness/unity.h"
 #include "../src/lab.h"
 
@@ -231,4 +232,92 @@ void test_sender_gives_up_after_10_timeouts(void) {
     
     sender_handle_timeout(&tx, 3250, out_pkts);
     TEST_ASSERT_TRUE(sender_has_failed(&tx)); // Fails on 10th consecutive timeout[cite: 1]
+}
+
+#include <stdlib.h>
+
+void test_lossy_end_to_end_transfer(void) {
+    Sender tx;
+    Receiver rx;
+    sender_init(&tx, 8, 250);
+    receiver_init(&rx);
+    
+    srand(42); // Fixed seed for reproducibility[cite: 1]
+    uint64_t now = 1000;
+    
+    // Simulate a short file (e.g., 3 DATA packets + 1 FIN)
+    Packet source_packets[4];
+    for (int i = 0; i < 3; i++) {
+        source_packets[i].type = 0;
+        source_packets[i].seq = i;
+        source_packets[i].length = 5;
+        memcpy(source_packets[i].payload, "12345", 5);
+    }
+    source_packets[3].type = 2; // FIN
+    source_packets[3].seq = 3;
+    source_packets[3].length = 0;
+    
+    int packets_sent = 0;
+    bool transfer_active = true;
+    
+    // In-memory channel queues
+    Packet network_to_rx[100];
+    int to_rx_count = 0;
+    
+    Packet network_to_tx[100];
+    int to_tx_count = 0;
+
+    // Simulate event loop
+    while (transfer_active && now < 20000) {
+        now += 10; // Advance clock
+        
+        // Sender: Push new packets if window open
+        while (packets_sent < 4 && sender_window_open(&tx)) {
+            sender_enqueue_packet(&tx, &source_packets[packets_sent], now);
+            // 20% loss/corruption simulation[cite: 1]
+            if (rand() % 100 >= 20) {
+                network_to_rx[to_rx_count++] = source_packets[packets_sent];
+            }
+            packets_sent++;
+        }
+        
+        // Receiver process network
+        for (int i = 0; i < to_rx_count; i++) {
+            bool send_ack, write_payload;
+            Packet ack_out;
+            receiver_process_packet(&rx, &network_to_rx[i], now, &send_ack, &ack_out, &write_payload);
+            
+            if (send_ack) {
+                // 20% loss/corruption on ACKs[cite: 1]
+                if (rand() % 100 >= 20) {
+                    network_to_tx[to_tx_count++] = ack_out;
+                }
+            }
+        }
+        to_rx_count = 0; // Clear queue
+        
+        // Sender process ACKs
+        for (int i = 0; i < to_tx_count; i++) {
+            sender_handle_ack(&tx, &network_to_tx[i], now);
+            if (packets_sent == 4 && !tx.timer_running) {
+                transfer_active = false; // FIN acked
+            }
+        }
+        to_tx_count = 0; // Clear queue
+        
+        // Sender Handle Timeout
+        if (sender_time_until_timeout(&tx, now) == 0) {
+            Packet retransmits[MAX_WINDOW_SIZE];
+            uint32_t count = sender_handle_timeout(&tx, now, retransmits);
+            for (uint32_t i = 0; i < count; i++) {
+                if (rand() % 100 >= 20) { // 20% loss on retransmits
+                    network_to_rx[to_rx_count++] = retransmits[i];
+                }
+            }
+        }
+    }
+    
+    // Assert transfer succeeded despite the 20% drop rate
+    TEST_ASSERT_FALSE(transfer_active);
+    TEST_ASSERT_EQUAL(4, rx.expected); // 3 DATA + 1 FIN[cite: 1]
 }
