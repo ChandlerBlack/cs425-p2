@@ -13,15 +13,15 @@ void tearDown(void) {
   printf("Tearing down tests...\n");
 }
 
-// Test the specific RFC 1071 worked example from the assignment[cite: 1]
+// Test the specific RFC 1071 worked example from the assignment
 void test_rfc1071_checksum_even_length(void) {
-    // The bytes 00 01 f2 03 f4 f5 f6 f7 sum to 0xddf2, so their checksum is 0x220d[cite: 1]
+    // The bytes 00 01 f2 03 f4 f5 f6 f7 sum to 0xddf2, so their checksum is 0x220d
     uint8_t buffer[] = {0x00, 0x01, 0xf2, 0x03, 0xf4, 0xf5, 0xf6, 0xf7};
     uint16_t checksum = compute_checksum(buffer, sizeof(buffer));
     TEST_ASSERT_EQUAL_HEX16(0x220d, checksum);
 }
 
-// Test checksum on an odd length to verify the zero-padding logic[cite: 1]
+// Test checksum on an odd length to verify the zero-padding logic
 void test_rfc1071_checksum_odd_length(void) {
     // Appending 0x00 to the end mathematically simulates the padding. 
     uint8_t buffer_odd[] = {0x00, 0x01, 0xf2, 0x03, 0xf4, 0xf5, 0xf6, 0xf7, 0xAA};
@@ -35,7 +35,7 @@ void test_rfc1071_checksum_odd_length(void) {
 
 void test_encode_and_decode_valid_packet(void) {
     Packet pkt_in = {
-        .type = 0, // DATA[cite: 1]
+        .type = 0, // DATA
         .reserved = 0,
         .seq = 42,
         .length = 5,
@@ -61,7 +61,7 @@ void test_validation_rejects_flipped_bit(void) {
     uint8_t buffer[10];
     encode_packet(&pkt, buffer);
     
-    // Flip a single bit[cite: 1]
+    // Flip a single bit
     buffer[5] ^= 0x01; 
     
     Packet decoded;
@@ -71,7 +71,7 @@ void test_validation_rejects_flipped_bit(void) {
 
 void test_validation_rejects_short_datagram(void) {
     Packet decoded;
-    uint8_t buffer[9] = {0}; // Less than 10 bytes[cite: 1]
+    uint8_t buffer[9] = {0}; // Less than 10 bytes
     
     bool valid = decode_and_validate_packet(buffer, 9, &decoded);
     TEST_ASSERT_FALSE(valid);
@@ -83,13 +83,13 @@ void test_validation_rejects_length_mismatch(void) {
     size_t encoded_len = encode_packet(&pkt, buffer);
     
     Packet decoded;
-    // Tell the decoder the datagram size is smaller than 10 + length[cite: 1]
+    // Tell the decoder the datagram size is smaller than 10 + length
     bool valid = decode_and_validate_packet(buffer, encoded_len - 1, &decoded);
     TEST_ASSERT_FALSE(valid);
 }
 
 void test_validation_rejects_unknown_type(void) {
-    Packet pkt = { .type = 3, .reserved = 0, .seq = 1, .length = 0 }; // Type 3 is invalid[cite: 1]
+    Packet pkt = { .type = 3, .reserved = 0, .seq = 1, .length = 0 }; // Type 3 is invalid
     uint8_t buffer[10];
     encode_packet(&pkt, buffer);
     
@@ -129,9 +129,9 @@ void test_receiver_duplicate_packet(void) {
     receiver_process_packet(&rx, &pkt_in, 1000, &send_ack, &ack_out, &write_payload);
     
     TEST_ASSERT_TRUE(send_ack);
-    TEST_ASSERT_FALSE(write_payload); // Discard duplicate[cite: 1]
+    TEST_ASSERT_FALSE(write_payload); // Discard duplicate
     TEST_ASSERT_EQUAL(1, rx.expected);
-    TEST_ASSERT_EQUAL(1, ack_out.seq); // Re-send expected ACK[cite: 1]
+    TEST_ASSERT_EQUAL(1, ack_out.seq); // Re-send expected ACK
 }
 
 void test_receiver_fin_triggers_linger(void) {
@@ -150,8 +150,8 @@ void test_receiver_fin_triggers_linger(void) {
     TEST_ASSERT_TRUE(rx.linger_active);
     TEST_ASSERT_EQUAL(1000, rx.linger_start);
     
-    TEST_ASSERT_FALSE(receiver_is_linger_done(&rx, 2999)); // Under 2 seconds[cite: 1]
-    TEST_ASSERT_TRUE(receiver_is_linger_done(&rx, 3000));  // Exactly 2 seconds[cite: 1]
+    TEST_ASSERT_FALSE(receiver_is_linger_done(&rx, 2999)); // Under 2 seconds
+    TEST_ASSERT_TRUE(receiver_is_linger_done(&rx, 3000));  // Exactly 2 seconds
 }
 
 // --- Sender Tests ---
@@ -172,13 +172,13 @@ void test_sender_cumulative_ack_slides_window(void) {
     TEST_ASSERT_EQUAL(3, tx.next);
     TEST_ASSERT_TRUE(tx.timer_running);
     
-    Packet ack = { .type = 1, .seq = 2 }; // Acknowledges 0 and 1[cite: 1]
+    Packet ack = { .type = 1, .seq = 2 }; // Acknowledges 0 and 1
     bool advanced = sender_handle_ack(&tx, &ack, 1050);
     
     TEST_ASSERT_TRUE(advanced);
-    TEST_ASSERT_EQUAL(2, tx.base); // Slid window by multiple packets[cite: 1]
-    TEST_ASSERT_TRUE(tx.timer_running); // Packet 2 is still unacked[cite: 1]
-    TEST_ASSERT_EQUAL(1050, tx.timer_start); // Timer restarted[cite: 1]
+    TEST_ASSERT_EQUAL(2, tx.base); // Slid window by multiple packets
+    TEST_ASSERT_TRUE(tx.timer_running); // Packet 2 is still unacked
+    TEST_ASSERT_EQUAL(1050, tx.timer_start); // Timer restarted
 }
 
 void test_sender_duplicate_ack_ignored(void) {
@@ -189,12 +189,12 @@ void test_sender_duplicate_ack_ignored(void) {
     tx.timer_start = 1000;
     tx.timer_running = true;
     
-    Packet ack = { .type = 1, .seq = 1 }; // Duplicate ACK[cite: 1]
+    Packet ack = { .type = 1, .seq = 1 }; // Duplicate ACK
     bool advanced = sender_handle_ack(&tx, &ack, 1050);
     
     TEST_ASSERT_FALSE(advanced);
-    TEST_ASSERT_EQUAL(2, tx.base); // Window did not slide[cite: 1]
-    TEST_ASSERT_EQUAL(1000, tx.timer_start); // Timer did NOT restart[cite: 1]
+    TEST_ASSERT_EQUAL(2, tx.base); // Window did not slide
+    TEST_ASSERT_EQUAL(1000, tx.timer_start); // Timer did NOT restart
 }
 
 void test_sender_timeout_resends_window(void) {
@@ -205,6 +205,7 @@ void test_sender_timeout_resends_window(void) {
     Packet p2 = { .seq = 6 };
     
     tx.base = 5;
+    tx.next = 5;
     sender_enqueue_packet(&tx, &p1, 1000);
     sender_enqueue_packet(&tx, &p2, 1010);
     
@@ -214,7 +215,7 @@ void test_sender_timeout_resends_window(void) {
     TEST_ASSERT_EQUAL(2, count);
     TEST_ASSERT_EQUAL(5, out_pkts[0].seq);
     TEST_ASSERT_EQUAL(6, out_pkts[1].seq);
-    TEST_ASSERT_EQUAL(1300, tx.timer_start); // Restarted timer[cite: 1]
+    TEST_ASSERT_EQUAL(1300, tx.timer_start); // Restarted timer
     TEST_ASSERT_EQUAL(1, tx.timeout_count);
 }
 
@@ -231,7 +232,7 @@ void test_sender_gives_up_after_10_timeouts(void) {
     }
     
     sender_handle_timeout(&tx, 3250, out_pkts);
-    TEST_ASSERT_TRUE(sender_has_failed(&tx)); // Fails on 10th consecutive timeout[cite: 1]
+    TEST_ASSERT_TRUE(sender_has_failed(&tx)); // Fails on 10th consecutive timeout
 }
 
 #include <stdlib.h>
@@ -242,7 +243,7 @@ void test_lossy_end_to_end_transfer(void) {
     sender_init(&tx, 8, 250);
     receiver_init(&rx);
     
-    srand(42); // Fixed seed for reproducibility[cite: 1]
+    srand(42); // Fixed seed for reproducibility
     uint64_t now = 1000;
     
     // Simulate a short file (e.g., 3 DATA packets + 1 FIN)
@@ -274,7 +275,7 @@ void test_lossy_end_to_end_transfer(void) {
         // Sender: Push new packets if window open
         while (packets_sent < 4 && sender_window_open(&tx)) {
             sender_enqueue_packet(&tx, &source_packets[packets_sent], now);
-            // 20% loss/corruption simulation[cite: 1]
+            // 20% loss/corruption simulation
             if (rand() % 100 >= 20) {
                 network_to_rx[to_rx_count++] = source_packets[packets_sent];
             }
@@ -288,7 +289,7 @@ void test_lossy_end_to_end_transfer(void) {
             receiver_process_packet(&rx, &network_to_rx[i], now, &send_ack, &ack_out, &write_payload);
             
             if (send_ack) {
-                // 20% loss/corruption on ACKs[cite: 1]
+                // 20% loss/corruption on ACKs
                 if (rand() % 100 >= 20) {
                     network_to_tx[to_tx_count++] = ack_out;
                 }
@@ -319,5 +320,73 @@ void test_lossy_end_to_end_transfer(void) {
     
     // Assert transfer succeeded despite the 20% drop rate
     TEST_ASSERT_FALSE(transfer_active);
-    TEST_ASSERT_EQUAL(4, rx.expected); // 3 DATA + 1 FIN[cite: 1]
+    TEST_ASSERT_EQUAL(4, rx.expected); // 3 DATA + 1 FIN
+}
+
+
+void test_sender_time_until_timeout_not_running(void) {
+    Sender tx;
+    sender_init(&tx, 4, 250);
+    TEST_ASSERT_EQUAL_INT64(-1, sender_time_until_timeout(&tx, 1000));
+}
+
+void test_sender_time_until_timeout_remaining(void) {
+    Sender tx;
+    sender_init(&tx, 4, 250);
+    Packet p1 = { .seq = 0 };
+    sender_enqueue_packet(&tx, &p1, 1000);
+    
+    // 100ms has elapsed on a 250ms timer, 150ms should be remaining
+    TEST_ASSERT_EQUAL_INT64(150, sender_time_until_timeout(&tx, 1100));
+}
+
+void test_validation_rejects_oversized_payload(void) {
+    uint8_t buffer[15] = {0};
+    // Falsely claim a 2000-byte payload in the length header
+    buffer[8] = (2000 >> 8) & 0xFF; 
+    buffer[9] = 2000 & 0xFF;
+    
+    Packet decoded;
+    TEST_ASSERT_FALSE(decode_and_validate_packet(buffer, 15, &decoded));
+}
+
+void test_validation_rejects_nonzero_reserved(void) {
+    Packet pkt = { .type = 0, .reserved = 1, .seq = 1, .length = 0 };
+    uint8_t buffer[10];
+    encode_packet(&pkt, buffer);
+    
+    Packet decoded;
+    TEST_ASSERT_FALSE(decode_and_validate_packet(buffer, 10, &decoded));
+}
+
+
+
+int main(void) {
+    UNITY_BEGIN();
+    
+    RUN_TEST(test_rfc1071_checksum_even_length);
+    RUN_TEST(test_rfc1071_checksum_odd_length);
+    RUN_TEST(test_encode_and_decode_valid_packet);
+    RUN_TEST(test_validation_rejects_flipped_bit);
+    RUN_TEST(test_validation_rejects_short_datagram);
+    RUN_TEST(test_validation_rejects_length_mismatch);
+    RUN_TEST(test_validation_rejects_unknown_type);
+    
+    RUN_TEST(test_receiver_in_order_data);
+    RUN_TEST(test_receiver_duplicate_packet);
+    RUN_TEST(test_receiver_fin_triggers_linger);
+    
+    RUN_TEST(test_sender_cumulative_ack_slides_window);
+    RUN_TEST(test_sender_duplicate_ack_ignored);
+    RUN_TEST(test_sender_timeout_resends_window);
+    RUN_TEST(test_sender_gives_up_after_10_timeouts);
+    
+    RUN_TEST(test_lossy_end_to_end_transfer);
+
+    RUN_TEST(test_sender_time_until_timeout_not_running);
+    RUN_TEST(test_sender_time_until_timeout_remaining);
+    RUN_TEST(test_validation_rejects_oversized_payload);
+    RUN_TEST(test_validation_rejects_nonzero_reserved);
+    
+    return UNITY_END();
 }

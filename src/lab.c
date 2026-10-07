@@ -1,5 +1,6 @@
 #include "lab.h"
 #include <string.h>
+#include <stdio.h>
 
 uint16_t compute_checksum(const uint8_t *buffer, size_t length) {
     uint32_t sum = 0;
@@ -49,17 +50,19 @@ size_t encode_packet(const Packet *pkt, uint8_t *buffer) {
 }
 
 bool decode_and_validate_packet(const uint8_t *buffer, size_t length, Packet *pkt) {
-    if (length < 10) return false;
+    if (length < 10) { printf("Fail: length < 10\n"); return false; }
     
     uint16_t payload_len = (buffer[8] << 8) | buffer[9];
     
-    if (payload_len > MAX_PAYLOAD_SIZE) return false;
-    if (10 + payload_len != length) return false;
+    if (payload_len > MAX_PAYLOAD_SIZE) { printf("Fail: payload > 1024\n"); return false; }
+    if (10 + payload_len != length) { printf("Fail: size mismatch\n"); return false; }
+    if (buffer[0] > 2) { printf("Fail: invalid type\n"); return false; }
+    if (buffer[1] != 0) { printf("Fail: reserved not 0\n"); return false; }
     
-    if (buffer[0] > 2) return false; 
-    if (buffer[1] != 0) return false;
-    
-    if (compute_checksum(buffer, length) != 0x0000) return false;
+    if (compute_checksum(buffer, length) != 0x0000) { 
+        printf("Fail: bad checksum\n"); 
+        return false; 
+    }
     
     pkt->type = buffer[0];
     pkt->reserved = buffer[1];

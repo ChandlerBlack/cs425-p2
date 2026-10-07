@@ -21,26 +21,26 @@ uint64_t get_time_ms() {
     return (uint64_t)(ts.tv_sec * 1000) + (uint64_t)(ts.tv_nsec / 1000000);
 }
 
-// Phase 5: Relay Registration
+// Relay Registration
 void register_with_relay(int sockfd, struct addrinfo *res, bool is_sender, 
                          const char *session, float loss, float corrupt, float dup) {
     char hello_msg[256];
     if (is_sender) {
-        // Sender format: HELLO <session> send <loss> <corrupt> <dup>[cite: 1]
+        // Sender format: HELLO <session> send <loss> <corrupt> <dup>
         snprintf(hello_msg, sizeof(hello_msg), "HELLO %s send %f %f %f", 
                  session, loss, corrupt, dup);
     } else {
-        // Receiver format: HELLO <session> recv[cite: 1]
+        // Receiver format: HELLO <session> recv
         snprintf(hello_msg, sizeof(hello_msg), "HELLO %s recv", session);
     }
 
     struct pollfd pfd = { .fd = sockfd, .events = POLLIN };
     
-    // Attempt registration up to 5 times[cite: 1]
+    // Attempt registration up to 5 times
     for (int attempt = 0; attempt < 5; attempt++) {
         sendto(sockfd, hello_msg, strlen(hello_msg), 0, res->ai_addr, res->ai_addrlen);
         
-        // Wait up to 1 second for a reply[cite: 1]
+        // Wait up to 1 second for a reply
         int ready = poll(&pfd, 1, 1000); 
         if (ready > 0) {
             char reply[256];
@@ -49,10 +49,10 @@ void register_with_relay(int sockfd, struct addrinfo *res, bool is_sender,
                 reply[n] = '\0'; // Null-terminate for string comparison
                 
                 if (strncmp(reply, "OK", 2) == 0) {
-                    return; // Successfully registered[cite: 1]
+                    return; // Successfully registered
                 } else if (strncmp(reply, "ERR", 3) == 0) {
                     fprintf(stderr, "%s\n", reply);
-                    exit(2); // Relay refused[cite: 1]
+                    exit(2); // Relay refused
                 }
             }
         }
@@ -60,15 +60,15 @@ void register_with_relay(int sockfd, struct addrinfo *res, bool is_sender,
     
     // If we exit the loop, the relay never replied
     fprintf(stderr, "ERR relay did not respond after 5 attempts\n");
-    exit(2); // Network failure[cite: 1]
+    exit(2); // Network failure
 }
 
 
-
+#ifndef TEST
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         print_usage();
-        return 0; // Clean exit path for make leak[cite: 1]
+        return 0; // Clean exit path for make leak
     }
 
     bool is_sender = false;
@@ -76,10 +76,10 @@ int main(int argc, char *argv[]) {
         is_sender = true;
     } else if (strcmp(argv[1], "recv") != 0) {
         print_usage();
-        return 1; // Wrong command line[cite: 1]
+        return 1; // Wrong command line
     }
 
-    // Default configuration[cite: 1]
+    // Default configuration
     char *session = NULL;
     int window = 8;
     int timeout_ms = 250;
@@ -114,14 +114,14 @@ int main(int argc, char *argv[]) {
     char *relay_host = argv[optind];
     char *filename = argv[optind + 1];
 
-    // Resolve relay address using getaddrinfo (do not assume dotted quad)[cite: 1]
+    // Resolve relay address using getaddrinfo (do not assume dotted quad)
     struct addrinfo hints = {0}, *res;
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
     
     if (getaddrinfo(relay_host, port, &hints, &res) != 0) {
         fprintf(stderr, "Failed to resolve relay address\n");
-        return 2; // Network failure[cite: 1]
+        return 2; // Network failure
     }
 
     // Create the single socket used for the whole run
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Initialize state machines[cite: 1]
+    // Initialize state machines
     Sender tx;
     Receiver rx;
     if (is_sender) {
@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
 
 
     struct pollfd pfd;
-    // pfd.fd = sockfd;
+    pfd.fd = sockfd;
     pfd.events = POLLIN;
 
     bool transfer_active = true;
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
             break; 
         }
 
-        // Sender: While window is open and file has data, send new packets[cite: 1]
+        // Sender: While window is open and file has data, send new packets
         if (is_sender && !file_eof && sender_window_open(&tx)) {
             size_t bytes_read = fread(file_buf, 1, MAX_PAYLOAD_SIZE, file);
             Packet p = {0};
@@ -220,20 +220,21 @@ int main(int argc, char *argv[]) {
         }
 
         int ready = poll(&pfd, 1, poll_timeout);
+        now = get_time_ms();
 
         if (ready > 0 && (pfd.revents & POLLIN)) {
             uint8_t recv_buf[2048];
-            // Check length against size actually returned to prevent buffer overflows[cite: 1]
+            // Check length against size actually returned to prevent buffer overflows
             ssize_t n = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, NULL, NULL);
             if (n < 0) continue;
 
             Packet in_pkt;
-            // Silent discard if validation fails[cite: 1]
+            // Silent discard if validation fails
             if (!decode_and_validate_packet(recv_buf, n, &in_pkt)) continue;
 
             if (is_sender) {
                 if (sender_handle_ack(&tx, &in_pkt, now)) {
-                    // If the file is done and the timer stopped (all ACKs received), we are finished[cite: 1]
+                    // If the file is done and the timer stopped (all ACKs received), we are finished
                     if (file_eof && !tx.timer_running) transfer_active = false;
                 }
             } else {
@@ -254,17 +255,17 @@ int main(int argc, char *argv[]) {
                 }
             }
         } else if (ready == 0 && is_sender) {
-            // Timeout event[cite: 1]
+            // Timeout event
             Packet retransmit[MAX_WINDOW_SIZE];
             uint32_t count = sender_handle_timeout(&tx, now, retransmit);
             
-            // Give up after 10 fruitless timeouts[cite: 1]
+            // Give up after 10 fruitless timeouts
             if (sender_has_failed(&tx)) {
                 fprintf(stderr, "Sender gave up after 10 timeouts\n");
                 exit(2); 
             }
             
-            // Resend window[cite: 1]
+            // Resend window
             for (uint32_t i = 0; i < count; i++) {
                 uint8_t wire_buf[MAX_PAYLOAD_SIZE + 10];
                 size_t wire_len = encode_packet(&retransmit[i], wire_buf);
@@ -275,5 +276,6 @@ int main(int argc, char *argv[]) {
 
     fclose(file);
     freeaddrinfo(res);
-    return 0; // Exit 0 on successful transfer[cite: 1]
+    return 0; // Exit 0 on successful transfer
 }
+#endif
